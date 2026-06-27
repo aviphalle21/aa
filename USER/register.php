@@ -6,7 +6,7 @@ require_once '../includes/Logger.php';
 
 $alertMessage = '';
 $alertType = '';
-$generatedId = '';
+$accountCreated = false;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Validate CSRF
@@ -65,8 +65,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $notifMsg = $fullName . " (" . $newUniqueId . ") just created an account from a " . $deviceInfo['device'] . ".";
                 $notifStmt->execute([$notifMsg]);
 
-                $generatedId = $newUniqueId;
-                $alertMessage = 'Account created successfully! Please save your Unique ID below to log in.';
+                $accountCreated = true;
+                $alertMessage = 'Account created successfully! You can now login with your email and password.';
                 $alertType = 'alert-success';
             } catch (PDOException $e) {
                 // Check for duplicate email or phone
@@ -102,11 +102,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <div class="alert <?= $alertType ?>"><?= htmlspecialchars($alertMessage) ?></div>
     <?php endif; ?>
 
-    <?php if ($generatedId): ?>
-        <div class="generated-id-box">
-            <p>Your Unique Login ID is:</p>
-            <h2><?= htmlspecialchars($generatedId) ?></h2>
-        </div>
+    <?php if ($accountCreated): ?>
         <a href="index.php" class="btn-primary" style="display:block; text-align:center; text-decoration:none;">Go to Login</a>
     <?php else: ?>
         <form method="POST" action="register.php">
