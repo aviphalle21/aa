@@ -13,15 +13,14 @@ $searchCondition = "";
 $queryParams = [];
 
 if ($searchQuery !== '') {
-    $searchCondition = " WHERE u.full_name LIKE ? OR u.email LIKE ? OR u.phone LIKE ? OR u.unique_user_id LIKE ? ";
+    $searchCondition = " WHERE u.full_name LIKE ? OR u.email LIKE ? OR u.phone LIKE ? ";
     $likeQuery = "%" . $searchQuery . "%";
-    $queryParams = [$likeQuery, $likeQuery, $likeQuery, $likeQuery];
+    $queryParams = [$likeQuery, $likeQuery, $likeQuery];
 }
 
 // Fetch users with their table numbers and active booking status
 $query = "
     SELECT 
-        u.unique_user_id, 
         u.full_name, 
         u.email, 
         u.address, 
@@ -61,7 +60,7 @@ $showBackButton = true;
             <h2>All Users</h2>
             
             <form method="GET" action="users.php" style="display: flex; gap: 10px; flex-grow: 1; max-width: 400px;">
-                <input type="text" name="search" placeholder="Search Name, Email, Phone, or ID..." value="<?= htmlspecialchars($searchQuery) ?>" style="flex-grow: 1; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 8px; outline: none;">
+                <input type="text" name="search" placeholder="Search Name, Email, or Phone..." value="<?= htmlspecialchars($searchQuery) ?>" style="flex-grow: 1; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 8px; outline: none;">
                 <button type="submit" class="btn-primary" style="padding: 8px 16px;">Search</button>
                 <?php if($searchQuery): ?>
                     <a href="users.php" class="btn-secondary" style="padding: 8px 16px; text-decoration: none;">Clear</a>
@@ -74,7 +73,6 @@ $showBackButton = true;
             <table class="data-table">
                 <thead>
                     <tr>
-                        <th>Unique ID</th>
                         <th>Name</th>
                         <th>Email</th>
                         <th>Phone Number</th>
@@ -89,7 +87,6 @@ $showBackButton = true;
                     <?php if (count($users) > 0): ?>
                         <?php foreach ($users as $user): ?>
                         <tr>
-                            <td data-label="Unique ID"><strong><?= htmlspecialchars($user['unique_user_id']) ?></strong></td>
                             <td data-label="Name"><?= htmlspecialchars($user['full_name']) ?></td>
                             <td data-label="Email"><?= htmlspecialchars($user['email']) ?></td>
                             <td data-label="Phone Number"><?= htmlspecialchars($user['phone']) ?></td>
@@ -122,7 +119,7 @@ $showBackButton = true;
                         <?php endforeach; ?>
                     <?php else: ?>
                         <tr>
-                            <td colspan="7" style="text-align: center; padding: 40px; color: var(--text-muted);">
+                            <td colspan="8" style="text-align: center; padding: 40px; color: var(--text-muted);">
                                 No users found in the system.
                             </td>
                         </tr>
