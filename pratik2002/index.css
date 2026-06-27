@@ -1,0 +1,184 @@
+@import url('https://fonts.googleapis.com/css2?family=Merriweather:wght@400;700;900&family=DM+Sans:wght@400;500;600;700&display=swap');
+
+:root {
+    --brand-crimson: #991b1b;
+    --brand-crimson-dark: #7f1d1d;
+    --ink-black: #111827;
+    --ink-black-light: #1f2937;
+    --paper-white: #f8f9fa;
+    --pure-white: #ffffff;
+    --border-gray: #e5e7eb;
+    --text-muted: #6b7280;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    display: grid;
+    place-items: center;
+    min-height: 100vh;
+    padding: 20px;
+    background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
+    color: var(--ink-black);
+    font-family: 'DM Sans', sans-serif;
+}
+
+.login-container {
+    width: min(420px, 100%);
+    padding: 48px 40px;
+    background: var(--pure-white);
+    border: 1px solid var(--pure-white);
+    border-radius: 12px;
+    box-shadow: 
+        0 20px 25px -5px rgba(0, 0, 0, 0.05),
+        0 8px 10px -6px rgba(0, 0, 0, 0.01),
+        0 0 0 1px rgba(0, 0, 0, 0.02);
+    position: relative;
+    overflow: hidden;
+}
+
+/* Elegant crimson accent line */
+.login-container::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 5px;
+    background: linear-gradient(90deg, var(--brand-crimson-dark), var(--brand-crimson));
+}
+
+.login-container h2 {
+    text-align: center;
+    font-family: 'Merriweather', serif;
+    font-size: 1.8rem;
+    font-weight: 900;
+    margin-bottom: 32px;
+    color: var(--ink-black);
+    letter-spacing: -0.01em;
+}
+
+.login-container h2 span {
+    color: var(--brand-crimson);
+}
+
+.form-group {
+    margin-bottom: 22px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+}
+
+.form-group input {
+    width: 100%;
+    padding: 14px 16px;
+    border: 1px solid var(--border-gray);
+    border-radius: 8px;
+    background: #fbfbfc;
+    font-size: 1rem;
+    font-family: 'DM Sans', sans-serif;
+    color: var(--ink-black);
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.02);
+    transition: all 0.2s ease;
+}
+
+.form-group input::placeholder {
+    color: #9ca3af;
+}
+
+.form-group input:focus {
+    outline: none;
+    background: var(--pure-white);
+    border-color: var(--brand-crimson);
+    box-shadow: 0 0 0 4px rgba(153, 27, 27, 0.1), inset 0 1px 2px rgba(0,0,0,0.01);
+}
+
+.btn-login {
+    width: 100%;
+    padding: 14px;
+    margin-top: 10px;
+    border: none;
+    border-radius: 8px;
+    background: linear-gradient(180deg, var(--ink-black-light) 0%, var(--ink-black) 100%);
+    color: var(--pure-white);
+    font-size: 1rem;
+    font-weight: 600;
+    font-family: 'DM Sans', sans-serif;
+    cursor: pointer;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    transition: all 0.2s ease;
+}
+
+.btn-login:hover {
+    background: linear-gradient(180deg, var(--brand-crimson) 0%, var(--brand-crimson-dark) 100%);
+    box-shadow: 0 6px 10px -2px rgba(153, 27, 27, 0.3), 0 2px 4px -1px rgba(153, 27, 27, 0.15);
+    transform: translateY(-1px);
+}
+
+.btn-login:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 4px -1px rgba(153, 27, 27, 0.2);
+}
+
+.error {
+    margin-bottom: 24px;
+    padding: 12px;
+    border-radius: 8px;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    color: var(--brand-crimson);
+    text-align: center;
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+/* ===========================
+   Logo Container
+=========================== */
+
+.logo-container {
+    width: 150px;
+    height: 150px;
+    margin: 0 auto 28px;
+    border: 1px solid #991b1b;
+    border-radius: 50%;
+    background: #fff;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+
+.logo-container img {
+    width: 130px;         /* Adjust this to make the logo bigger/smaller */
+    height: 130px;
+    object-fit: contain;
+    display: block;
+    padding: 1px;         /* Creates a sweet gap between logo and circle */
+    box-sizing: border-box;
+}
+
+.site-title-badge {
+    background: #0f172a; /* Navy Blue */
+    color: #ffffff; /* White letters */
+    padding: 8px 24px;
+    border-radius: 20px;
+    font-size: 1.4rem;
+    font-weight: 700;
+    text-align: center;
+    margin: -10px auto 28px auto;
+    width: fit-content;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}

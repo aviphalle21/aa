@@ -1,0 +1,7 @@
+[2026-06-27 12:02:58] SMS queued for 9869485739: 'Your booking for Table T-1 is confirmed. Amount Paid: Rs 1.00.'
+[2026-06-27 13:02:30] SMS queued for 1234567890: 'Your booking for Table T-2 is confirmed. Amount Paid: Rs 1.00.'
+[2026-06-27 13:18:08] SMS queued for 9405228628: 'Your booking for Table T-1 is confirmed. Amount Paid: Rs 1.00.'
+[2026-06-27 15:57:45] SMS queued for 1234567890: 'Your booking for Table T-1 is confirmed. Amount Paid: Rs 1.00.'
+[2026-06-27 16:14:30] SMS queued for 7012334312: 'Your booking for Table T-1 is confirmed. Amount Paid: Rs 800.00.'
+[2026-06-27 16:33:41] SMS queued for 1234567890: 'Your booking for Table T-1 is confirmed. Amount Paid: Rs 800.00.'
+[2026-06-27 16:42:15] SMS queued for 7012334312: 'Your booking for Table T-1 is confirmed. Amount Paid: Rs 800.00.'

@@ -1,0 +1,43 @@
+[27-Jun-2026 15:40:27 Europe/Berlin] Database connection failed: SQLSTATE[HY000] [1049] Unknown database 'library'
+[27-Jun-2026 15:40:32 Europe/Berlin] Admin Database connection failed: SQLSTATE[HY000] [1049] Unknown database 'library'
+[27-Jun-2026 16:09:10 Europe/Berlin] Database connection failed: SQLSTATE[HY000] [1049] Unknown database 'library'
+[27-Jun-2026 16:12:43 Europe/Berlin] Database connection failed: SQLSTATE[HY000] [1049] Unknown database 'library'
+[27-Jun-2026 16:12:44 Europe/Berlin] Database connection failed: SQLSTATE[HY000] [1049] Unknown database 'library'
+[27-Jun-2026 16:12:44 Europe/Berlin] Database connection failed: SQLSTATE[HY000] [1049] Unknown database 'library'
+[27-Jun-2026 16:12:44 Europe/Berlin] Database connection failed: SQLSTATE[HY000] [1049] Unknown database 'library'
+[27-Jun-2026 16:16:57 Europe/Berlin] PHP Fatal error:  Uncaught PDOException: There is no active transaction in C:\xampp1\htdocs\file\USER\payment.php:109
+Stack trace:
+#0 C:\xampp1\htdocs\file\USER\payment.php(109): PDO->rollBack()
+#1 {main}
+  thrown in C:\xampp1\htdocs\file\USER\payment.php on line 109
+[27-Jun-2026 16:21:47 Europe/Berlin] PHP Fatal error:  Uncaught PDOException: There is no active transaction in C:\xampp1\htdocs\file\USER\payment.php:109
+Stack trace:
+#0 C:\xampp1\htdocs\file\USER\payment.php(109): PDO->rollBack()
+#1 {main}
+  thrown in C:\xampp1\htdocs\file\USER\payment.php on line 109
+[27-Jun-2026 16:22:46 Europe/Berlin] PHP Fatal error:  Uncaught PDOException: There is no active transaction in C:\xampp1\htdocs\file\USER\payment.php:109
+Stack trace:
+#0 C:\xampp1\htdocs\file\USER\payment.php(109): PDO->rollBack()
+#1 {main}
+  thrown in C:\xampp1\htdocs\file\USER\payment.php on line 109
+[27-Jun-2026 16:23:44 Europe/Berlin] PHP Fatal error:  Uncaught PDOException: There is no active transaction in C:\xampp1\htdocs\file\USER\payment.php:109
+Stack trace:
+#0 C:\xampp1\htdocs\file\USER\payment.php(109): PDO->rollBack()
+#1 {main}
+  thrown in C:\xampp1\htdocs\file\USER\payment.php on line 109
+[27-Jun-2026 16:24:36 Europe/Berlin] PHP Fatal error:  Uncaught PDOException: There is no active transaction in C:\xampp1\htdocs\file\USER\payment.php:109
+Stack trace:
+#0 C:\xampp1\htdocs\file\USER\payment.php(109): PDO->rollBack()
+#1 {main}
+  thrown in C:\xampp1\htdocs\file\USER\payment.php on line 109
+[27-Jun-2026 16:25:38 Europe/Berlin] PHP Fatal error:  Uncaught PDOException: There is no active transaction in C:\xampp1\htdocs\file\USER\payment.php:109
+Stack trace:
+#0 C:\xampp1\htdocs\file\USER\payment.php(109): PDO->rollBack()
+#1 {main}
+  thrown in C:\xampp1\htdocs\file\USER\payment.php on line 109
+[27-Jun-2026 16:31:50 Europe/Berlin] Database connection failed: SQLSTATE[HY000] [1049] Unknown database 'library'
+[27-Jun-2026 16:39:54 Europe/Berlin] PHP Fatal error:  Uncaught PDOException: There is no active transaction in C:\xampp1\htdocs\file\USER\payment.php:109
+Stack trace:
+#0 C:\xampp1\htdocs\file\USER\payment.php(109): PDO->rollBack()
+#1 {main}
+  thrown in C:\xampp1\htdocs\file\USER\payment.php on line 109
