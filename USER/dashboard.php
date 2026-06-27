@@ -36,7 +36,7 @@ $subStmt = $pdo->prepare("
     FROM user_subscriptions s
     JOIN library_tables t ON s.table_id = t.table_id
     JOIN subscription_plans p ON s.plan_id = p.plan_id
-    WHERE s.user_id = ? AND s.subscription_status = 'Active'
+    WHERE s.user_id = ? AND s.subscription_status = 'Active' AND s.payment_status = 'Paid'
     ORDER BY s.expiry_date DESC LIMIT 1
 ");
 $subStmt->execute([$user_id]);
