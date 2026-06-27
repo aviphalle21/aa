@@ -50,6 +50,7 @@ function completePaidBooking(PDO $pdo, int $user_id, string $table_number, strin
     $pdo->beginTransaction();
     try {
         $paymentStmt = $pdo->prepare("\n            SELECT p.payment_id, p.subscription_id, p.amount, p.payment_status, p.payment_date, us.plan_id, us.table_id, us.expiry_date, sp.duration_days\n            FROM payments p\n            JOIN user_subscriptions us ON p.subscription_id = us.subscription_id\n            JOIN subscription_plans sp ON us.plan_id = sp.plan_id\n            WHERE p.payment_reference = ? AND p.user_id = ?\n            FOR UPDATE\n        ");
+        $paymentStmt = $pdo->prepare("\n            SELECT p.payment_id, p.subscription_id, p.amount, p.payment_status, us.plan_id, us.table_id, us.expiry_date, sp.duration_days\n            FROM payments p\n            JOIN user_subscriptions us ON p.subscription_id = us.subscription_id\n            JOIN subscription_plans sp ON us.plan_id = sp.plan_id\n            WHERE p.payment_reference = ? AND p.user_id = ?\n            FOR UPDATE\n        ");
         $paymentStmt->execute([$payment_reference, $user_id]);
         $payment = $paymentStmt->fetch();
 
@@ -74,6 +75,9 @@ function completePaidBooking(PDO $pdo, int $user_id, string $table_number, strin
         if ($payment['payment_status'] === 'Failed' || $payment['payment_status'] === 'Refunded') {
             $pdo->commit();
             return ['completed' => false, 'failed' => true, 'redirect' => 'payment.php?table_id=' . urlencode($table_number) . '&failed=1', 'message' => 'Payment failed or was refunded.'];
+            $demoPay = $pdo->prepare("UPDATE payments SET payment_status = 'Paid', payment_date = NOW() WHERE payment_id = ?");
+            $demoPay->execute([$payment['payment_id']]);
+            $payment['payment_status'] = 'Paid';
         }
 
         if ($payment['payment_status'] !== 'Paid') {
@@ -251,6 +255,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     <div class="price-tag" id="priceDisplay"></div>
                     <img id="dynamicQrImg" src="" alt="Payment QR Code">
                     <p style="margin-top: 15px; font-size: 0.9rem; color: var(--text-muted);">Scan with GPay, PhonePe, or Paytm. Keep this page open; it will check the payment and move forward automatically.</p>
+                    <p style="margin-top: 15px; font-size: 0.9rem; color: var(--text-muted);">Scan with GPay, PhonePe, or Paytm.</p>
+                    <a id="upiPayLink" class="btn-primary upi-pay-link" href="#">Open UPI App</a>
                 </div>
 
                 <div id="paymentStatus" class="payment-status"></div>
@@ -265,6 +271,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     const qrContainer = document.getElementById('qrContainer');
     const priceDisplay = document.getElementById('priceDisplay');
     const statusBox = document.getElementById('paymentStatus');
+    const upiPayLink = document.getElementById('upiPayLink');
     const dynamicQrImg = document.getElementById('dynamicQrImg');
     let activeReference = '';
     let pollTimer = null;
@@ -313,6 +320,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         }
     }
 
+
+            if (result.failed) {
+                showStatus(result.message || 'Payment failed. Redirecting to failed report...', true);
+                window.location.href = result.redirect;
+                return;
+            }
+
+            showStatus(result.message || 'Waiting for bank confirmation. Please complete payment in your UPI app.');
+        } catch (error) {
+            showStatus('Payment verification is temporarily unavailable. We will keep checking automatically.', true);
+        }
+    }
+
     async function createPaymentRequest() {
         const selectedOption = planSelect.options[planSelect.selectedIndex];
         const price = selectedOption.getAttribute('data-price');
@@ -342,6 +362,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             activeReference = result.reference;
             dynamicQrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(result.upi_url)}`;
             showStatus(`Payment request ${activeReference} is ready. Scan the QR; this page will fetch payment status and go forward automatically.`);
+            pollPaymentStatus();
+            pollTimer = setInterval(pollPaymentStatus, <?= PAYMENT_POLL_SECONDS * 1000 ?>);
+        } catch (error) {
+            qrContainer.style.display = 'none';
+            showStatus('Could not create payment request. Please try again.', true);
+        }
+            qrContainer.style.display = 'none';
+            statusBox.style.display = 'none';
+            return;
+        }
+
+        priceDisplay.textContent = 'Amount to Pay: ₹' + price;
+        qrContainer.style.display = 'block';
+        showStatus('Creating secure payment request...');
+
+        try {
+            const result = await postPaymentAction('init_payment', { plan_id: planId });
+            if (!result.ok) {
+                qrContainer.style.display = 'none';
+                showStatus(result.message || 'Could not start payment.', true);
+                return;
+            }
+
+            activeReference = result.reference;
+            dynamicQrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(result.upi_url)}`;
+            showStatus(`Payment request ${activeReference} is ready. Scan the QR; this page will fetch payment status and go forward automatically.`);
+            upiPayLink.href = result.upi_url;
+            showStatus(`Payment request ${activeReference} is ready. After your bank confirms payment, booking will continue automatically.`);
             pollPaymentStatus();
             pollTimer = setInterval(pollPaymentStatus, <?= PAYMENT_POLL_SECONDS * 1000 ?>);
         } catch (error) {
