@@ -1,5 +1,6 @@
 <?php
 require_once 'config.php';
+require_once 'payment_config.php';
 
 if (!isset($_SESSION['user_id'])) {
     header("Location: index.php");
@@ -9,111 +10,162 @@ if (!isset($_SESSION['user_id'])) {
 $user_id = $_SESSION['user_id'];
 $table_id = isset($_GET['table_id']) ? $_GET['table_id'] : '';
 
-// Handle Missing Table ID
 if (empty($table_id)) {
     header("Location: dashboard.php");
     exit;
 }
 
-// Fetch user data
 $stmt = $pdo->prepare("SELECT full_name, email, phone FROM users WHERE user_id = ?");
 $stmt->execute([$user_id]);
 $user = $stmt->fetch();
 
-// Fetch Plans
 $plansStmt = $pdo->query("SELECT plan_id, plan_name, price, duration_days FROM subscription_plans WHERE active = 1");
 $plans = $plansStmt->fetchAll();
 
-$success = false;
+$success = isset($_GET['success']) && $_GET['success'] == 1;
+$failed = isset($_GET['failed']) && $_GET['failed'] == 1;
 $error = '';
 
-// Process Simulated Payment
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $plan_id = $_POST['plan_id'];
-    
-    if (empty($plan_id)) {
-        $error = 'Please select a plan.';
-    } else {
-        try {
-            // Check if user already has an active booking
-            $checkSub = $pdo->prepare("SELECT subscription_id FROM user_subscriptions WHERE user_id = ? AND subscription_status = 'Active'");
-            $checkSub->execute([$user_id]);
-            if ($checkSub->fetch()) {
-                throw new Exception("You already have an active table booking. You cannot book multiple tables.");
-            }
+function jsonResponse(array $payload): void
+{
+    header('Content-Type: application/json');
+    echo json_encode($payload);
+    exit;
+}
 
-            $pdo->beginTransaction();
-            
-            // Generate simulated transaction ID
-            $txn_id = "SIM-UPI-" . mt_rand(1000000, 9999999);
-            
-            // 1. Get Plan Details
-            $pStmt = $pdo->prepare("SELECT price, duration_days FROM subscription_plans WHERE plan_id = ?");
-            $pStmt->execute([$plan_id]);
-            $selectedPlan = $pStmt->fetch();
-            
-            if (!$selectedPlan) {
-                throw new Exception("Invalid plan selected.");
-            }
-            
-            // 2. Fetch actual Table ID (we have table_number in GET, need table_id)
-            $tStmt = $pdo->prepare("SELECT table_id, status FROM library_tables WHERE table_number = ?");
-            $tStmt->execute([$table_id]);
-            $tableRow = $tStmt->fetch();
-            
-            if (!$tableRow || $tableRow['status'] === 'Booked') {
-                throw new Exception("This table is no longer available.");
-            }
-            $real_table_id = $tableRow['table_id'];
-            
-            // 3. Create User Subscription first to get subscription_id
-            $subStmt = $pdo->prepare("INSERT INTO user_subscriptions (user_id, plan_id, table_id, start_date, expiry_date, amount_paid, subscription_status) VALUES (?, ?, ?, CURDATE(), DATE_ADD(CURDATE(), INTERVAL ? DAY), ?, 'Active')");
-            $subStmt->execute([$user_id, $plan_id, $real_table_id, $selectedPlan['duration_days'], $selectedPlan['price']]);
-            $subscription_id = $pdo->lastInsertId();
+function buildUpiUrl(string $reference, float $amount): string
+{
+    return 'upi://pay?' . http_build_query([
+        'pa' => PAYMENT_UPI_ID,
+        'pn' => PAYMENT_PAYEE_NAME,
+        'am' => number_format($amount, 2, '.', ''),
+        'cu' => PAYMENT_CURRENCY,
+        'tn' => 'Library table booking ' . $reference,
+        'tr' => $reference,
+    ]);
+}
 
-            // 4. Create Payment Record (Simulated as Paid)
-            $payStmt = $pdo->prepare("INSERT INTO payments (user_id, subscription_id, amount, payment_method, payment_status, payment_reference, payment_date) VALUES (?, ?, ?, 'UPI', 'Paid', ?, NOW())");
-            $payStmt->execute([$user_id, $subscription_id, $selectedPlan['price'], $txn_id]);
-            $payment_id = $pdo->lastInsertId();
-            
-            // 5. Create Booking
-            $bRef = "BK-" . mt_rand(100000, 999999);
-            $bookStmt = $pdo->prepare("INSERT INTO bookings (user_id, table_id, start_date, expiry_date, booking_status, booking_reference, plan_price, booking_price) VALUES (?, ?, CURDATE(), DATE_ADD(CURDATE(), INTERVAL ? DAY), 'Active', ?, ?, ?)");
-            $bookStmt->execute([$user_id, $real_table_id, $selectedPlan['duration_days'], $bRef, $selectedPlan['price'], $selectedPlan['price']]);
-            
-            // 6. Update Table Status
-            $updTable = $pdo->prepare("UPDATE library_tables SET status = 'Booked', current_user_id = ? WHERE table_id = ?");
-            $updTable->execute([$user_id, $real_table_id]);
-            
-            $pdo->commit();
-            
-            // 7. Insert Notification for Admin
-            $notifStmt = $pdo->prepare("INSERT INTO system_notifications (type, title, message) VALUES ('payment', 'New Payment & Booking', ?)");
-            $notifMsg = $user['full_name'] . " paid Rs " . $selectedPlan['price'] . " and booked Table T-$table_id.";
-            $notifStmt->execute([$notifMsg]);
+function completePaidBooking(PDO $pdo, int $user_id, string $table_number, string $payment_reference, array $user): array
+{
+    $pdo->beginTransaction();
+    try {
+        $paymentStmt = $pdo->prepare("\n            SELECT p.payment_id, p.subscription_id, p.amount, p.payment_status, p.payment_date, us.plan_id, us.table_id, us.expiry_date, sp.duration_days\n            FROM payments p\n            JOIN user_subscriptions us ON p.subscription_id = us.subscription_id\n            JOIN subscription_plans sp ON us.plan_id = sp.plan_id\n            WHERE p.payment_reference = ? AND p.user_id = ?\n            FOR UPDATE\n        ");
+        $paymentStmt->execute([$payment_reference, $user_id]);
+        $payment = $paymentStmt->fetch();
 
-            // 8. SEND REAL EMAIL AND LOG SMS
-            $to = $user['email'];
-            $subject = "Booking Confirmed - Saraswati Abhyasika";
-            $emailMessage = "Hello " . $user['full_name'] . ",\n\nYour booking for Table T-$table_id is confirmed!\n\nBooking Reference: $bRef\nAmount Paid: ₹" . $selectedPlan['price'] . "\n\nThank you for choosing Saraswati Abhyasika!";
-            $headers = "From: noreply@saraswatiabhyasika.com\r\nReply-To: noreply@saraswatiabhyasika.com\r\nX-Mailer: PHP/" . phpversion();
-            @mail($to, $subject, $emailMessage, $headers);
-
-            $logFile = 'notification_logs.txt';
-            $logMsg = "[" . date('Y-m-d H:i:s') . "] SMS queued for " . $user['phone'] . ": 'Your booking for Table T-$table_id is confirmed. Amount Paid: Rs " . $selectedPlan['price'] . ".'\n";
-            file_put_contents($logFile, $logMsg, FILE_APPEND);
-            
-            header("Location: payment.php?table_id=" . urlencode($table_id) . "&success=1");
-            exit;
-        } catch (Exception $e) {
-            $pdo->rollBack();
-            $error = $e->getMessage();
+        if (!$payment) {
+            throw new Exception('Payment request was not found.');
         }
+
+        if (PAYMENT_AUTO_CONFIRM_DEMO && $payment['payment_status'] === 'Pending') {
+            $createdAt = strtotime($payment['payment_date']);
+            $secondsSinceCreated = $createdAt ? time() - $createdAt : PAYMENT_AUTO_CONFIRM_AFTER_SECONDS;
+            if ($secondsSinceCreated >= PAYMENT_AUTO_CONFIRM_AFTER_SECONDS) {
+                $demoPay = $pdo->prepare("UPDATE payments SET payment_status = 'Paid', payment_date = NOW() WHERE payment_id = ?");
+                $demoPay->execute([$payment['payment_id']]);
+                $payment['payment_status'] = 'Paid';
+            } else {
+                $pdo->commit();
+                $remainingSeconds = PAYMENT_AUTO_CONFIRM_AFTER_SECONDS - $secondsSinceCreated;
+                return ['completed' => false, 'message' => "Please finish the UPI payment. Booking will continue automatically in about {$remainingSeconds} seconds."];
+            }
+        }
+
+        if ($payment['payment_status'] === 'Failed' || $payment['payment_status'] === 'Refunded') {
+            $pdo->commit();
+            return ['completed' => false, 'failed' => true, 'redirect' => 'payment.php?table_id=' . urlencode($table_number) . '&failed=1', 'message' => 'Payment failed or was refunded.'];
+        }
+
+        if ($payment['payment_status'] !== 'Paid') {
+            $pdo->commit();
+            return ['completed' => false, 'message' => 'Waiting for bank confirmation.'];
+        }
+
+        $activeStmt = $pdo->prepare("SELECT booking_id FROM bookings WHERE user_id = ? AND table_id = ? AND booking_status = 'Active'");
+        $activeStmt->execute([$user_id, $payment['table_id']]);
+        if (!$activeStmt->fetch()) {
+            $tableStmt = $pdo->prepare("SELECT status FROM library_tables WHERE table_id = ? FOR UPDATE");
+            $tableStmt->execute([$payment['table_id']]);
+            $table = $tableStmt->fetch();
+            if (!$table || $table['status'] === 'Booked') {
+                throw new Exception('This table is no longer available. Please contact admin for refund/support.');
+            }
+
+            $subUpdate = $pdo->prepare("UPDATE user_subscriptions SET payment_status = 'Paid', subscription_status = 'Active', start_date = CURDATE(), expiry_date = DATE_ADD(CURDATE(), INTERVAL ? DAY) WHERE subscription_id = ?");
+            $subUpdate->execute([$payment['duration_days'], $payment['subscription_id']]);
+
+            $bookingRef = 'BK-' . mt_rand(100000, 999999);
+            $bookStmt = $pdo->prepare("INSERT INTO bookings (user_id, table_id, start_date, expiry_date, booking_status, booking_reference, plan_price, booking_price) VALUES (?, ?, CURDATE(), DATE_ADD(CURDATE(), INTERVAL ? DAY), 'Active', ?, ?, ?)");
+            $bookStmt->execute([$user_id, $payment['table_id'], $payment['duration_days'], $bookingRef, $payment['amount'], $payment['amount']]);
+
+            $updTable = $pdo->prepare("UPDATE library_tables SET status = 'Booked', current_user_id = ? WHERE table_id = ?");
+            $updTable->execute([$user_id, $payment['table_id']]);
+
+            $notifStmt = $pdo->prepare("INSERT INTO system_notifications (type, title, message) VALUES ('payment', 'New Payment & Booking', ?)");
+            $notifStmt->execute([$user['full_name'] . " paid Rs " . $payment['amount'] . " and booked Table T-$table_number."]);
+
+            @mail($user['email'], 'Booking Confirmed - Saraswati Abhyasika', "Hello {$user['full_name']},\n\nYour booking for Table T-$table_number is confirmed!\n\nBooking Reference: $bookingRef\nAmount Paid: ₹{$payment['amount']}\n\nThank you for choosing Saraswati Abhyasika!", "From: noreply@saraswatiabhyasika.com\r\nReply-To: noreply@saraswatiabhyasika.com\r\nX-Mailer: PHP/" . phpversion());
+            file_put_contents('notification_logs.txt', '[' . date('Y-m-d H:i:s') . "] SMS queued for {$user['phone']}: 'Your booking for Table T-$table_number is confirmed. Amount Paid: Rs {$payment['amount']}.'\n", FILE_APPEND);
+        }
+
+        $pdo->commit();
+        return ['completed' => true, 'redirect' => 'payment.php?table_id=' . urlencode($table_number) . '&success=1'];
+    } catch (Exception $e) {
+        $pdo->rollBack();
+        throw $e;
     }
 }
 
-if (isset($_GET['success']) && $_GET['success'] == 1) {
-    $success = true;
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
+    try {
+        if ($_POST['action'] === 'init_payment') {
+            $plan_id = $_POST['plan_id'] ?? '';
+            if (empty($plan_id)) {
+                throw new Exception('Please select a plan.');
+            }
+
+            $checkSub = $pdo->prepare("SELECT subscription_id FROM user_subscriptions WHERE user_id = ? AND subscription_status = 'Active' AND payment_status = 'Paid'");
+            $checkSub->execute([$user_id]);
+            if ($checkSub->fetch()) {
+                throw new Exception('You already have an active table booking. You cannot book multiple tables.');
+            }
+
+            $pStmt = $pdo->prepare("SELECT price, duration_days FROM subscription_plans WHERE plan_id = ? AND active = 1");
+            $pStmt->execute([$plan_id]);
+            $selectedPlan = $pStmt->fetch();
+            if (!$selectedPlan) {
+                throw new Exception('Invalid plan selected.');
+            }
+
+            $tStmt = $pdo->prepare("SELECT table_id, status FROM library_tables WHERE table_number = ?");
+            $tStmt->execute([$table_id]);
+            $tableRow = $tStmt->fetch();
+            if (!$tableRow || $tableRow['status'] === 'Booked') {
+                throw new Exception('This table is no longer available.');
+            }
+
+            $pdo->beginTransaction();
+            $reference = 'UPI-' . date('YmdHis') . '-' . mt_rand(1000, 9999);
+            $subStmt = $pdo->prepare("INSERT INTO user_subscriptions (user_id, plan_id, table_id, start_date, expiry_date, amount_paid, payment_status, subscription_status) VALUES (?, ?, ?, CURDATE(), DATE_ADD(CURDATE(), INTERVAL ? DAY), ?, 'Pending', 'Active')");
+            $subStmt->execute([$user_id, $plan_id, $tableRow['table_id'], $selectedPlan['duration_days'], $selectedPlan['price']]);
+            $subscription_id = $pdo->lastInsertId();
+            $payStmt = $pdo->prepare("INSERT INTO payments (user_id, subscription_id, amount, payment_method, payment_status, payment_reference, payment_date) VALUES (?, ?, ?, 'UPI', 'Pending', ?, NOW())");
+            $payStmt->execute([$user_id, $subscription_id, $selectedPlan['price'], $reference]);
+            $pdo->commit();
+
+            jsonResponse(['ok' => true, 'reference' => $reference, 'amount' => $selectedPlan['price'], 'upi_url' => buildUpiUrl($reference, (float) $selectedPlan['price'])]);
+        }
+
+        if ($_POST['action'] === 'check_payment') {
+            $reference = $_POST['reference'] ?? '';
+            if (empty($reference)) {
+                throw new Exception('Payment reference is missing.');
+            }
+            jsonResponse(['ok' => true] + completePaidBooking($pdo, $user_id, $table_id, $reference, $user));
+        }
+    } catch (Exception $e) {
+        jsonResponse(['ok' => false, 'message' => $e->getMessage()]);
+    }
 }
 ?>
 <!DOCTYPE html>
@@ -134,6 +186,98 @@ if (isset($_GET['success']) && $_GET['success'] == 1) {
             width: 100%; padding: 12px 15px; margin-bottom: 20px;
             border-radius: 12px; border: 2px solid var(--border-color);
             background: var(--bg-primary); color: var(--text-main); font-size: 1rem;
+        }
+        .payment-status {
+            display: none; padding: 16px; border-radius: 12px; margin-bottom: 20px;
+            background: #eff6ff; color: #1d4ed8; text-align: center; font-weight: 600;
+        }
+        .payment-error { background: rgba(254, 226, 226, 0.9); color: #dc2626; }
+        .upi-pay-link { display: inline-block; margin-top: 15px; text-decoration: none; }
+        body {
+            min-height: 100vh;
+            background:
+                radial-gradient(circle at 15% 15%, rgba(59, 130, 246, 0.35), transparent 30%),
+                radial-gradient(circle at 85% 20%, rgba(236, 72, 153, 0.28), transparent 28%),
+                radial-gradient(circle at 50% 90%, rgba(16, 185, 129, 0.28), transparent 30%),
+                linear-gradient(135deg, #0f172a 0%, #1e1b4b 45%, #312e81 100%);
+            background-size: 130% 130%;
+            animation: animatedGradient 14s ease infinite;
+        }
+        @keyframes animatedGradient {
+            0%, 100% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+        }
+        .navbar, .checkout-card {
+            backdrop-filter: blur(22px);
+            background: rgba(255, 255, 255, 0.82) !important;
+            border: 1px solid rgba(255, 255, 255, 0.55);
+            box-shadow: 0 24px 70px rgba(15, 23, 42, 0.28);
+        }
+        .checkout-card {
+            animation: cardFloatIn 0.7s ease both;
+            overflow: hidden;
+            position: relative;
+        }
+        .checkout-card::before {
+            content: '';
+            position: absolute;
+            inset: -2px;
+            background: linear-gradient(120deg, rgba(59,130,246,.3), rgba(236,72,153,.22), rgba(16,185,129,.25));
+            opacity: .45;
+            z-index: -1;
+        }
+        @keyframes cardFloatIn {
+            from { opacity: 0; transform: translateY(24px) scale(.98); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .btn-primary, .btn-secondary, .btn-animated {
+            transition: transform .18s ease, box-shadow .18s ease, filter .18s ease;
+        }
+        .btn-primary:hover, .btn-secondary:hover, .btn-animated:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 14px 28px rgba(37, 99, 235, .28);
+            filter: brightness(1.03);
+        }
+        .btn-primary:active, .btn-secondary:active, .btn-animated:active {
+            transform: translateY(1px) scale(.98);
+            box-shadow: 0 7px 14px rgba(15, 23, 42, .2);
+        }
+        .qr-container {
+            text-align: center;
+            animation: softPop .35s ease both;
+        }
+        @keyframes softPop {
+            from { opacity: 0; transform: scale(.96); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        #dynamicQrImg {
+            border-radius: 22px;
+            padding: 12px;
+            background: #fff;
+            box-shadow: 0 18px 45px rgba(15, 23, 42, .18);
+            max-width: 250px;
+        }
+        .booking-preview {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            margin: 20px 0 24px;
+        }
+        .preview-pill {
+            padding: 14px;
+            border-radius: 16px;
+            background: rgba(255,255,255,.68);
+            border: 1px solid rgba(148,163,184,.35);
+            text-align: center;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.7);
+        }
+        .preview-pill span { display:block; color:#64748b; font-size:.78rem; margin-bottom:4px; }
+        .preview-pill strong { color:#0f172a; }
+        .payment-actions { display:none; gap:12px; margin-top: 16px; }
+        .payment-actions .btn-primary { flex: 1; padding: 14px; font-size: 1rem; }
+        @media (max-width: 640px) {
+            .booking-preview { grid-template-columns: 1fr; }
+            .payment-actions { flex-direction: column; }
         }
     </style>
 </head>
@@ -159,10 +303,22 @@ if (isset($_GET['success']) && $_GET['success'] == 1) {
                 <p style="margin-bottom: 30px; font-size: 0.9rem; color: var(--text-muted);"><em>We have sent a confirmation SMS to <?= htmlspecialchars($user['phone']) ?> and an email to <?= htmlspecialchars($user['email']) ?>.</em></p>
                 <a href="dashboard.php" class="btn-primary" style="text-decoration:none;">Go to Dashboard</a>
             </div>
+        <?php elseif($failed): ?>
+            <div class="success-box">
+                <h1 style="color:#dc2626;">❌ Payment Failed</h1>
+                <p style="font-size: 1.1rem; color: var(--text-muted); margin-bottom: 20px;">Your payment for Table <strong style="color:var(--text-main);">T-<?= htmlspecialchars($table_id) ?></strong> was not completed.</p>
+                <a href="payment.php?table_id=<?= urlencode($table_id) ?>" class="btn-primary" style="text-decoration:none;">Try Again</a>
+                <a href="dashboard.php" class="btn-primary" style="text-decoration:none; background:#64748b; margin-left:10px;">Back to Dashboard</a>
+            </div>
         <?php else: ?>
         
             <h2 style="text-align: center;">Complete Your Booking</h2>
-            <p style="text-align: center; color: var(--text-muted); margin-bottom: 30px;">You are booking Table <strong style="color:#3b82f6;">T-<?= htmlspecialchars($table_id) ?></strong></p>
+            <p style="text-align: center; color: var(--text-muted); margin-bottom: 18px;">You are booking Table <strong style="color:#3b82f6;">T-<?= htmlspecialchars($table_id) ?></strong></p>
+            <div class="booking-preview" id="bookingPreview">
+                <div class="preview-pill"><span>Table</span><strong>T-<?= htmlspecialchars($table_id) ?></strong></div>
+                <div class="preview-pill"><span>Plan</span><strong id="previewPlan">Select plan</strong></div>
+                <div class="preview-pill"><span>Status</span><strong id="previewStatus">Not started</strong></div>
+            </div>
             
             <?php if ($error): ?>
                 <div style="background:#fee2e2; color:#dc2626; padding:15px; border-radius:10px; margin-bottom:20px; text-align:center;">
@@ -170,7 +326,7 @@ if (isset($_GET['success']) && $_GET['success'] == 1) {
                 </div>
             <?php endif; ?>
 
-            <form method="POST" action="payment.php?table_id=<?= urlencode($table_id) ?>">
+            <form id="paymentForm" method="POST" action="payment.php?table_id=<?= urlencode($table_id) ?>">
                 <label style="font-weight:600; margin-bottom:8px; display:block;">1. Select Plan</label>
                 <select class="form-control" name="plan_id" id="planSelect" required>
                     <option value="">-- Choose a Plan --</option>
@@ -185,12 +341,13 @@ if (isset($_GET['success']) && $_GET['success'] == 1) {
                     <label style="font-weight:600; display:block; margin-bottom:15px;">2. Scan & Pay</label>
                     <div class="price-tag" id="priceDisplay"></div>
                     <img id="dynamicQrImg" src="" alt="Payment QR Code">
-                    <p style="margin-top: 15px; font-size: 0.9rem; color: var(--text-muted);">Scan with GPay, PhonePe, or Paytm.</p>
+                    <p style="margin-top: 15px; font-size: 0.9rem; color: var(--text-muted);">Scan with GPay, PhonePe, or Paytm. Keep this page open; it will check the payment and move forward automatically.</p>
                 </div>
 
-                <div id="verificationSection" style="display:none;">
-                    <label style="font-weight:600; margin-bottom:8px; display:block;">3. Confirm Booking</label>
-                    <button type="submit" class="btn-primary" style="width:100%; padding: 15px; font-size: 1.1rem; background: #10b981; border:none; box-shadow: 0 4px 15px rgba(16,185,129,0.3);">I Have Paid - Confirm Booking</button>
+                <div id="paymentStatus" class="payment-status"></div>
+                <div id="paymentActions" class="payment-actions">
+                    <button type="button" id="checkPaymentBtn" class="btn-primary btn-animated">Check Payment & Continue</button>
+                    <a href="dashboard.php" class="btn-primary btn-animated" style="text-align:center; text-decoration:none; background:#64748b;">Back</a>
                 </div>
             </form>
 
@@ -201,31 +358,122 @@ if (isset($_GET['success']) && $_GET['success'] == 1) {
 <script>
     const planSelect = document.getElementById('planSelect');
     const qrContainer = document.getElementById('qrContainer');
-    const verificationSection = document.getElementById('verificationSection');
     const priceDisplay = document.getElementById('priceDisplay');
+    const statusBox = document.getElementById('paymentStatus');
+    const dynamicQrImg = document.getElementById('dynamicQrImg');
+    const paymentActions = document.getElementById('paymentActions');
+    const checkPaymentBtn = document.getElementById('checkPaymentBtn');
+    const previewPlan = document.getElementById('previewPlan');
+    const previewStatus = document.getElementById('previewStatus');
+    let activeReference = '';
+    let pollTimer = null;
 
-    planSelect.addEventListener('change', function() {
-        const selectedOption = this.options[this.selectedIndex];
-        const price = selectedOption.getAttribute('data-price');
-        
-        if (price) {
-            priceDisplay.textContent = 'Amount to Pay: ₹' + price;
-            
-            // Generate dynamic UPI QR Code
-            const upiId = 'pratikshingare2002@okicici';
-            const payeeName = 'Saraswati Abhyasika';
-            const upiString = `upi://pay?pa=${upiId}&pn=${encodeURIComponent(payeeName)}&am=${price}&cu=INR`;
-            const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(upiString)}`;
-            
-            document.getElementById('dynamicQrImg').src = qrApiUrl;
-            
-            qrContainer.style.display = 'block';
-            verificationSection.style.display = 'block';
-        } else {
-            qrContainer.style.display = 'none';
-            verificationSection.style.display = 'none';
+    function showStatus(message, isError = false) {
+        statusBox.textContent = message;
+        statusBox.className = 'payment-status' + (isError ? ' payment-error' : '');
+        statusBox.style.display = 'block';
+        if (previewStatus) {
+            previewStatus.textContent = isError ? 'Needs attention' : message.split('.')[0];
         }
-    });
+    }
+
+    async function postPaymentAction(action, extra = {}) {
+        const body = new URLSearchParams({ action, ...extra });
+        const response = await fetch('payment.php?table_id=<?= urlencode($table_id) ?>', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body
+        });
+        return response.json();
+    }
+
+    async function pollPaymentStatus() {
+        if (!activeReference) return;
+
+        try {
+            const result = await postPaymentAction('check_payment', { reference: activeReference });
+            if (!result.ok) {
+                showStatus(result.message || 'Unable to verify payment right now.', true);
+                return;
+            }
+
+            if (result.completed) {
+                showStatus('Payment confirmed. Redirecting to your booking...');
+                window.location.href = result.redirect;
+                return;
+            }
+
+            if (result.failed) {
+                showStatus(result.message || 'Payment failed. Redirecting to failed report...', true);
+                window.location.href = result.redirect;
+                return;
+            }
+
+            showStatus(result.message || 'Waiting for bank confirmation. Please complete payment in your UPI app.');
+        } catch (error) {
+            showStatus('Payment verification is temporarily unavailable. We will keep checking automatically.', true);
+        }
+    }
+
+    async function createPaymentRequest() {
+        const selectedOption = planSelect.options[planSelect.selectedIndex];
+        const price = selectedOption.getAttribute('data-price');
+        const planId = planSelect.value;
+
+        clearInterval(pollTimer);
+        activeReference = '';
+
+        if (!price || !planId) {
+            qrContainer.style.display = 'none';
+            statusBox.style.display = 'none';
+            paymentActions.style.display = 'none';
+            if (previewPlan) previewPlan.textContent = 'Select plan';
+            if (previewStatus) previewStatus.textContent = 'Not started';
+            return;
+        }
+
+        if (previewPlan) previewPlan.textContent = selectedOption.textContent.trim();
+        if (previewStatus) previewStatus.textContent = 'Creating payment';
+        priceDisplay.textContent = 'Amount to Pay: ₹' + price;
+        qrContainer.style.display = 'block';
+        showStatus('Creating secure payment request...');
+
+        try {
+            const result = await postPaymentAction('init_payment', { plan_id: planId });
+            if (!result.ok) {
+                qrContainer.style.display = 'none';
+                showStatus(result.message || 'Could not start payment.', true);
+                return;
+            }
+
+            activeReference = result.reference;
+            dynamicQrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(result.upi_url)}`;
+            showStatus(`Payment request ${activeReference} is ready. Scan the QR, then click Check Payment & Continue.`);
+            paymentActions.style.display = 'flex';
+            pollPaymentStatus();
+            pollTimer = setInterval(pollPaymentStatus, <?= PAYMENT_POLL_SECONDS * 1000 ?>);
+        } catch (error) {
+            qrContainer.style.display = 'none';
+            showStatus('Could not create payment request. Please try again.', true);
+        }
+    }
+
+    if (document.getElementById('paymentForm')) {
+        document.getElementById('paymentForm').addEventListener('submit', function(event) {
+            event.preventDefault();
+        });
+    }
+
+    if (checkPaymentBtn) {
+        checkPaymentBtn.addEventListener('click', function() {
+            showStatus('Checking payment confirmation...');
+            pollPaymentStatus();
+        });
+    }
+
+    if (planSelect) {
+        planSelect.addEventListener('change', createPaymentRequest);
+    }
 </script>
 
 </body>

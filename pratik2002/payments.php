@@ -16,7 +16,7 @@ if (isset($_POST['update_price'])) {
     $new_price = $_POST['new_price'];
     
     // Check if there are ANY active subscriptions using this plan
-    $checkStmt = $pdo->prepare("SELECT COUNT(*) as active_count FROM user_subscriptions WHERE plan_id = ? AND subscription_status = 'Active'");
+    $checkStmt = $pdo->prepare("SELECT COUNT(*) as active_count FROM user_subscriptions WHERE plan_id = ? AND subscription_status = 'Active' AND payment_status = 'Paid'");
     $checkStmt->execute([$plan_id]);
     $activeCount = $checkStmt->fetchColumn();
     

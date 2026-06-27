@@ -15,7 +15,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email = trim($_POST['email']);
     $phone = trim($_POST['phone']);
     $address = trim($_POST['address']);
-    $password = password_hash('password123', PASSWORD_DEFAULT); // default password
+    $plainPassword = $_POST['password'] ?? '';
+    $confirmPassword = $_POST['confirm_password'] ?? '';
+
+    if (empty($fullName) || empty($email) || empty($phone) || empty($plainPassword)) {
+        $alertMessage = 'Please fill name, email, phone, and password.';
+        $alertType = 'alert-error';
+    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $alertMessage = 'Please enter a valid email address.';
+        $alertType = 'alert-error';
+    } elseif ($plainPassword !== $confirmPassword) {
+        $alertMessage = 'Password and confirm password do not match.';
+        $alertType = 'alert-error';
+    } elseif (strlen($plainPassword) < 8) {
+        $alertMessage = 'Password must be at least 8 characters long.';
+        $alertType = 'alert-error';
+    } else {
+        $password = password_hash($plainPassword, PASSWORD_DEFAULT);
     
     // Generate unique ID
     $uniqueStmt = $pdo->query("SELECT MAX(user_id) as max_id FROM users");
@@ -26,11 +42,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         $insertStmt = $pdo->prepare("INSERT INTO users (unique_user_id, full_name, email, phone, address, password) VALUES (?, ?, ?, ?, ?, ?)");
         $insertStmt->execute([$uniqueUserId, $fullName, $email, $phone, $address, $password]);
-        $alertMessage = "User added successfully! Default password is 'password123'.";
-        $alertType = "alert-success";
+        $alertMessage = 'User added successfully! The member can now login with email and the password you set.';
+        $alertType = 'alert-success';
     } catch (PDOException $e) {
-        $alertMessage = "Error: Could not add user. " . $e->getMessage();
-        $alertType = "alert-error";
+        if ($e->getCode() === '23000') {
+            if (strpos($e->getMessage(), 'email') !== false) {
+                $alertMessage = 'This email is already registered. Please use a different email or ask the user to login.';
+            } elseif (strpos($e->getMessage(), 'phone') !== false) {
+                $alertMessage = 'This phone number is already registered. Please use a different phone number.';
+            } else {
+                $alertMessage = 'This user already exists. Please check email and phone number.';
+            }
+        } else {
+            $alertMessage = 'Could not add user right now. Please try again later.';
+        }
+        $alertType = 'alert-error';
+    }
     }
 }
 $pageTitle = 'Add New User';
@@ -80,7 +107,16 @@ $showBackButton = true;
         }
         .btn-submit:hover {
             background: var(--brand-crimson-dark);
+            color: #fff;
         }
+        .alert {
+            padding: 12px 14px;
+            border-radius: 8px;
+            margin-bottom: 18px;
+            font-weight: 600;
+        }
+        .alert-success { background: #dcfce7; color: #166534; }
+        .alert-error { background: #fee2e2; color: #b91c1c; }
     </style>
 </head>
 <body>
@@ -109,8 +145,21 @@ $showBackButton = true;
                 <label for="address">Address</label>
                 <textarea id="address" name="address" rows="3"></textarea>
             </div>
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" required minlength="8">
+            </div>
+            <div class="form-group">
+                <label for="confirm_password">Confirm Password</label>
+                <input type="password" id="confirm_password" name="confirm_password" required minlength="8">
+            </div>
             <button type="submit" class="btn-submit">Add User</button>
         </form>
     </div>
     </div>
+<?php if ($alertMessage): ?>
+<script>
+    alert(<?= json_encode($alertMessage) ?>);
+</script>
+<?php endif; ?>
 <?php include 'footer.php'; ?>

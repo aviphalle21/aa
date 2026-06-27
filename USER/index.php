@@ -30,16 +30,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $alertMessage = 'Invalid request (CSRF check failed). Please try again.';
         $alertType = 'alert-error';
     } else {
-        $uniqueId = trim($_POST['unique_id']);
+        $email = trim($_POST['email']);
         $password = $_POST['password'];
 
-        if (empty($uniqueId) || empty($password)) {
-            $alertMessage = 'Please enter both Unique ID and Password.';
+        if (empty($email) || empty($password)) {
+            $alertMessage = 'Please enter both Email and Password.';
             $alertType = 'alert-error';
         } else {
             try {
-                $stmt = $pdo->prepare("SELECT user_id, unique_user_id, full_name, password, account_status, failed_login_attempts, locked_until FROM users WHERE unique_user_id = ?");
-                $stmt->execute([$uniqueId]);
+                $stmt = $pdo->prepare("SELECT user_id, unique_user_id, full_name, email, password, account_status, failed_login_attempts, locked_until FROM users WHERE email = ?");
+                $stmt->execute([$email]);
                 $user = $stmt->fetch();
 
                 if ($user) {
@@ -75,7 +75,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 // Success
                                 $_SESSION['user_id'] = $user['user_id'];
                                 $_SESSION['user_name'] = $user['full_name'];
-                                $_SESSION['unique_id'] = $user['unique_user_id'];
+                                $_SESSION['user_email'] = $user['email'];
                                 header("Location: dashboard.php");
                                 exit;
                             } else {
@@ -97,7 +97,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 $notifMsg = "Multiple failed login attempts for user " . $user['unique_user_id'] . ". Account temporarily locked.";
                                 $notifStmt->execute([$notifMsg]);
                             } else {
-                                $alertMessage = 'Invalid Unique ID or Password. Attempts left: ' . (5 - $fails);
+                                $alertMessage = 'Invalid Email or Password. Attempts left: ' . (5 - $fails);
                                 Logger::logAudit($pdo, 'Login', 'Failed Password', $user['user_id'], null);
                             }
                             
@@ -106,9 +106,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         }
                     }
                 } else {
-                    $alertMessage = 'Invalid Unique ID or Password.';
+                    $alertMessage = 'Invalid Email or Password.';
                     $alertType = 'alert-error';
-                    Logger::logAudit($pdo, 'Login', 'Failed User Not Found (ID: '.$uniqueId.')', null, null);
+                    Logger::logAudit($pdo, 'Login', 'Failed User Not Found (Email: '.$email.')', null, null);
                 }
             } catch (PDOException $e) {
                 $alertMessage = 'A system error occurred. Please try again later.';
@@ -142,8 +142,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <form action="index.php" method="POST">
         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(Security::generateCSRFToken()) ?>">
         <div class="form-group">
-            <label for="unique_id">Unique Login ID</label>
-            <input type="text" id="unique_id" name="unique_id" required placeholder="UNIQUE ID">
+            <label for="email">Email Address</label>
+            <input type="email" id="email" name="email" required placeholder="you@example.com">
         </div>
 
         <div class="form-group">
