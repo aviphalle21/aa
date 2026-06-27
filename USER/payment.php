@@ -195,6 +195,94 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             display: none; padding: 16px; border-radius: 12px; margin-bottom: 20px;
             background: #eff6ff; color: #1d4ed8; text-align: center; font-weight: 600;
         }
+        .payment-error { background: rgba(254, 226, 226, 0.9); color: #dc2626; }
+        .upi-pay-link { display: inline-block; margin-top: 15px; text-decoration: none; }
+        body {
+            min-height: 100vh;
+            background:
+                radial-gradient(circle at 15% 15%, rgba(59, 130, 246, 0.35), transparent 30%),
+                radial-gradient(circle at 85% 20%, rgba(236, 72, 153, 0.28), transparent 28%),
+                radial-gradient(circle at 50% 90%, rgba(16, 185, 129, 0.28), transparent 30%),
+                linear-gradient(135deg, #0f172a 0%, #1e1b4b 45%, #312e81 100%);
+            background-size: 130% 130%;
+            animation: animatedGradient 14s ease infinite;
+        }
+        @keyframes animatedGradient {
+            0%, 100% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+        }
+        .navbar, .checkout-card {
+            backdrop-filter: blur(22px);
+            background: rgba(255, 255, 255, 0.82) !important;
+            border: 1px solid rgba(255, 255, 255, 0.55);
+            box-shadow: 0 24px 70px rgba(15, 23, 42, 0.28);
+        }
+        .checkout-card {
+            animation: cardFloatIn 0.7s ease both;
+            overflow: hidden;
+            position: relative;
+        }
+        .checkout-card::before {
+            content: '';
+            position: absolute;
+            inset: -2px;
+            background: linear-gradient(120deg, rgba(59,130,246,.3), rgba(236,72,153,.22), rgba(16,185,129,.25));
+            opacity: .45;
+            z-index: -1;
+        }
+        @keyframes cardFloatIn {
+            from { opacity: 0; transform: translateY(24px) scale(.98); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .btn-primary, .btn-secondary, .btn-animated {
+            transition: transform .18s ease, box-shadow .18s ease, filter .18s ease;
+        }
+        .btn-primary:hover, .btn-secondary:hover, .btn-animated:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 14px 28px rgba(37, 99, 235, .28);
+            filter: brightness(1.03);
+        }
+        .btn-primary:active, .btn-secondary:active, .btn-animated:active {
+            transform: translateY(1px) scale(.98);
+            box-shadow: 0 7px 14px rgba(15, 23, 42, .2);
+        }
+        .qr-container {
+            text-align: center;
+            animation: softPop .35s ease both;
+        }
+        @keyframes softPop {
+            from { opacity: 0; transform: scale(.96); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        #dynamicQrImg {
+            border-radius: 22px;
+            padding: 12px;
+            background: #fff;
+            box-shadow: 0 18px 45px rgba(15, 23, 42, .18);
+            max-width: 250px;
+        }
+        .booking-preview {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            margin: 20px 0 24px;
+        }
+        .preview-pill {
+            padding: 14px;
+            border-radius: 16px;
+            background: rgba(255,255,255,.68);
+            border: 1px solid rgba(148,163,184,.35);
+            text-align: center;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.7);
+        }
+        .preview-pill span { display:block; color:#64748b; font-size:.78rem; margin-bottom:4px; }
+        .preview-pill strong { color:#0f172a; }
+        .payment-actions { display:none; gap:12px; margin-top: 16px; }
+        .payment-actions .btn-primary { flex: 1; padding: 14px; font-size: 1rem; }
+        @media (max-width: 640px) {
+            .booking-preview { grid-template-columns: 1fr; }
+            .payment-actions { flex-direction: column; }
+        }
         .payment-error { background: #fee2e2; color: #dc2626; }
         .upi-pay-link { display: inline-block; margin-top: 15px; text-decoration: none; }
     </style>
@@ -231,7 +319,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         <?php else: ?>
         
             <h2 style="text-align: center;">Complete Your Booking</h2>
-            <p style="text-align: center; color: var(--text-muted); margin-bottom: 30px;">You are booking Table <strong style="color:#3b82f6;">T-<?= htmlspecialchars($table_id) ?></strong></p>
+            <p style="text-align: center; color: var(--text-muted); margin-bottom: 18px;">You are booking Table <strong style="color:#3b82f6;">T-<?= htmlspecialchars($table_id) ?></strong></p>
+            <div class="booking-preview" id="bookingPreview">
+                <div class="preview-pill"><span>Table</span><strong>T-<?= htmlspecialchars($table_id) ?></strong></div>
+                <div class="preview-pill"><span>Plan</span><strong id="previewPlan">Select plan</strong></div>
+                <div class="preview-pill"><span>Status</span><strong id="previewStatus">Not started</strong></div>
+            </div>
             
             <?php if ($error): ?>
                 <div style="background:#fee2e2; color:#dc2626; padding:15px; border-radius:10px; margin-bottom:20px; text-align:center;">
@@ -255,6 +348,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     <div class="price-tag" id="priceDisplay"></div>
                     <img id="dynamicQrImg" src="" alt="Payment QR Code">
                     <p style="margin-top: 15px; font-size: 0.9rem; color: var(--text-muted);">Scan with GPay, PhonePe, or Paytm. Keep this page open; it will check the payment and move forward automatically.</p>
+                </div>
+
+                <div id="paymentStatus" class="payment-status"></div>
+                <div id="paymentActions" class="payment-actions">
+                    <button type="button" id="checkPaymentBtn" class="btn-primary btn-animated">Check Payment & Continue</button>
+                    <a href="dashboard.php" class="btn-primary btn-animated" style="text-align:center; text-decoration:none; background:#64748b;">Back</a>
+                </div>
                     <p style="margin-top: 15px; font-size: 0.9rem; color: var(--text-muted);">Scan with GPay, PhonePe, or Paytm.</p>
                     <a id="upiPayLink" class="btn-primary upi-pay-link" href="#">Open UPI App</a>
                 </div>
@@ -271,6 +371,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     const qrContainer = document.getElementById('qrContainer');
     const priceDisplay = document.getElementById('priceDisplay');
     const statusBox = document.getElementById('paymentStatus');
+    const dynamicQrImg = document.getElementById('dynamicQrImg');
+    const paymentActions = document.getElementById('paymentActions');
+    const checkPaymentBtn = document.getElementById('checkPaymentBtn');
+    const previewPlan = document.getElementById('previewPlan');
+    const previewStatus = document.getElementById('previewStatus');
     const upiPayLink = document.getElementById('upiPayLink');
     const dynamicQrImg = document.getElementById('dynamicQrImg');
     let activeReference = '';
@@ -280,6 +385,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         statusBox.textContent = message;
         statusBox.className = 'payment-status' + (isError ? ' payment-error' : '');
         statusBox.style.display = 'block';
+        if (previewStatus) {
+            previewStatus.textContent = isError ? 'Needs attention' : message.split('.')[0];
+        }
     }
 
     async function postPaymentAction(action, extra = {}) {
@@ -291,6 +399,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         });
         return response.json();
     }
+
+    async function pollPaymentStatus() {
+        if (!activeReference) return;
+
+        try {
+            const result = await postPaymentAction('check_payment', { reference: activeReference });
+            if (!result.ok) {
+                showStatus(result.message || 'Unable to verify payment right now.', true);
+                return;
+            }
+
+            if (result.completed) {
+                showStatus('Payment confirmed. Redirecting to your booking...');
+                window.location.href = result.redirect;
+                return;
+            }
+
+            if (result.failed) {
+                showStatus(result.message || 'Payment failed. Redirecting to failed report...', true);
+                window.location.href = result.redirect;
+                return;
+            }
+
+            showStatus(result.message || 'Waiting for bank confirmation. Please complete payment in your UPI app.');
+        } catch (error) {
+            showStatus('Payment verification is temporarily unavailable. We will keep checking automatically.', true);
+        }
+    }
+
 
     async function pollPaymentStatus() {
         if (!activeReference) return;
@@ -344,6 +481,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         if (!price || !planId) {
             qrContainer.style.display = 'none';
             statusBox.style.display = 'none';
+            paymentActions.style.display = 'none';
+            if (previewPlan) previewPlan.textContent = 'Select plan';
+            if (previewStatus) previewStatus.textContent = 'Not started';
+            return;
+        }
+
+        if (previewPlan) previewPlan.textContent = selectedOption.textContent.trim();
+        if (previewStatus) previewStatus.textContent = 'Creating payment';
+            qrContainer.style.display = 'none';
+            statusBox.style.display = 'none';
             return;
         }
 
@@ -387,6 +534,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
             activeReference = result.reference;
             dynamicQrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(result.upi_url)}`;
+            showStatus(`Payment request ${activeReference} is ready. Scan the QR, then click Check Payment & Continue.`);
+            paymentActions.style.display = 'flex';
             showStatus(`Payment request ${activeReference} is ready. Scan the QR; this page will fetch payment status and go forward automatically.`);
             upiPayLink.href = result.upi_url;
             showStatus(`Payment request ${activeReference} is ready. After your bank confirms payment, booking will continue automatically.`);
@@ -401,6 +550,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     if (document.getElementById('paymentForm')) {
         document.getElementById('paymentForm').addEventListener('submit', function(event) {
             event.preventDefault();
+        });
+    }
+
+    if (checkPaymentBtn) {
+        checkPaymentBtn.addEventListener('click', function() {
+            showStatus('Checking payment confirmation...');
+            pollPaymentStatus();
         });
     }
 
