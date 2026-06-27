@@ -18,7 +18,7 @@ if (isset($_GET['logout'])) {
 }
 
 // Fetch latest user details
-$stmt = $pdo->prepare("SELECT full_name, unique_user_id, email, phone, account_status FROM users WHERE user_id = ?");
+$stmt = $pdo->prepare("SELECT full_name, email, phone, account_status FROM users WHERE user_id = ?");
 $stmt->execute([$user_id]);
 $user = $stmt->fetch();
 
@@ -96,7 +96,6 @@ $plans = $plansStmt->fetchAll();
         <h2>My Profile</h2>
         <div style="margin-top: 20px; font-size: 1.05rem; line-height: 1.8;">
             <p><strong>Name:</strong> <?= htmlspecialchars($user['full_name']) ?></p>
-            <p><strong>Unique ID:</strong> <?= htmlspecialchars($user['unique_user_id']) ?></p>
             <p><strong>Email:</strong> <?= htmlspecialchars($user['email']) ?></p>
             <p><strong>Phone:</strong> <?= htmlspecialchars($user['phone']) ?></p>
             <p><strong>Status:</strong> <span style="color:var(--success); font-weight:bold;"><?= htmlspecialchars($user['account_status']) ?></span></p>

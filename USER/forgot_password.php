@@ -57,17 +57,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $to = $user['email'];
                 $subject = "Password Reset OTP - Saraswati Abhyasika";
                 $message = "Hello " . $user['full_name'] . ",\n\nYour OTP to reset your password is: " . $otp . "\n\nThis OTP is valid for 5 minutes. If you did not request a password reset, please ignore this email.";
-                $headers = "From: noreply@saraswatiabhyasika.com\r\n" .
-                           "Reply-To: noreply@saraswatiabhyasika.com\r\n" .
+                $headers = "From: Saraswati Library <noreply@saraswatiabhyasika.com>\r\n" .
+                           "Reply-To: Saraswati Library <noreply@saraswatiabhyasika.com>\r\n" .
+                           "Content-Type: text/plain; charset=UTF-8\r\n" .
                            "X-Mailer: PHP/" . phpversion();
-                
-                @mail($to, $subject, $message, $headers);
-                
+
+                $mailSent = mail($to, $subject, $message, $headers);
+                file_put_contents('notification_logs.txt', '[' . date('Y-m-d H:i:s') . "] Password reset OTP for {$user['email']}: {$otp}; mail status: " . ($mailSent ? 'sent' : 'failed') . "\n", FILE_APPEND);
+
                 $_SESSION['reset_user_id'] = $user['user_id'];
                 $_SESSION['reset_email'] = $user['email'];
-                
-                header("Location: verify_otp.php");
-                exit;
+
+                if ($mailSent) {
+                    header("Location: verify_otp.php");
+                    exit;
+                }
+
+                $alertMessage = 'OTP was generated, but the server mail service could not send it. Please contact admin to check USER/notification_logs.txt.';
+                $alertType = 'alert-error';
             }
         } else {
             // Do not reveal if email exists or not
@@ -122,5 +129,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </div>
 </div>
 
+<?php if ($alertMessage): ?>
+<script>
+    alert(<?= json_encode($alertMessage) ?>);
+</script>
+<?php endif; ?>
 </body>
 </html>
