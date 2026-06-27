@@ -320,6 +320,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         }
     }
 
+
+            if (result.failed) {
+                showStatus(result.message || 'Payment failed. Redirecting to failed report...', true);
+                window.location.href = result.redirect;
+                return;
+            }
+
+            showStatus(result.message || 'Waiting for bank confirmation. Please complete payment in your UPI app.');
+        } catch (error) {
+            showStatus('Payment verification is temporarily unavailable. We will keep checking automatically.', true);
+        }
+    }
+
     async function createPaymentRequest() {
         const selectedOption = planSelect.options[planSelect.selectedIndex];
         const price = selectedOption.getAttribute('data-price');
@@ -374,6 +387,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
             activeReference = result.reference;
             dynamicQrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(result.upi_url)}`;
+            showStatus(`Payment request ${activeReference} is ready. Scan the QR; this page will fetch payment status and go forward automatically.`);
             upiPayLink.href = result.upi_url;
             showStatus(`Payment request ${activeReference} is ready. After your bank confirms payment, booking will continue automatically.`);
             pollPaymentStatus();
